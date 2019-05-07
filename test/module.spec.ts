@@ -32,6 +32,9 @@ describe('Module', () => {
     inc() {
       this.state.value++
     }
+    incBy(payload: { value: number }) {
+      this.state.value += payload.value
+    }
   }
 
   class FooActions extends Actions<
@@ -44,6 +47,14 @@ describe('Module', () => {
       return new Promise(resolve => {
         setTimeout(() => {
           this.commit('inc', undefined)
+          resolve()
+        }, 0)
+      })
+    }
+    incBy(payload: { value: number }) {
+      return new Promise(resolve => {
+        setTimeout(() => {
+          this.mutations.incBy(payload)
           resolve()
         }, 0)
       })
@@ -404,6 +415,110 @@ describe('Module', () => {
       assert(store.state.value === 2)
       store.dispatch('doubleInc')
       assert(store.state.value === 4)
+    })
+
+    describe('committer and dispatcher', () => {
+      class TestActions extends Actions<
+        FooState,
+        FooGetters,
+        FooMutations,
+        TestActions
+      > {
+        inc(): Promise<void> {
+          return new Promise(resolve => {
+            setTimeout(() => {
+              this.mutations.inc()
+              resolve()
+            }, 0)
+          })
+        }
+        incBy(payload: { value: number }): Promise<void> {
+          return new Promise(resolve => {
+            setTimeout(() => {
+              this.mutations.incBy(payload)
+              resolve()
+            }, 0)
+          })
+        }
+        one(): Promise<void> {
+          return this.actions.inc()
+        }
+        incByTwo(): Promise<void> {
+          return this.actions.incBy({ value: 2 })
+        }
+      }
+      it('has mutations reference', async () => {
+        const root = new Module({
+          state: FooState,
+          mutations: FooMutations,
+          actions: TestActions
+        })
+        const store = createStore(root)
+        await store.dispatch('inc')
+        assert(store.state.value === 2)
+      })
+
+      it('has actions reference', async () => {
+        const root = new Module({
+          state: FooState,
+          mutations: FooMutations,
+          actions: TestActions
+        })
+        const store = createStore(root)
+        await store.dispatch('one')
+        assert(store.state.value === 2)
+      })
+
+      it('mutation payload is passed correctly', async () => {
+        const root = new Module({
+          state: FooState,
+          mutations: FooMutations,
+          actions: TestActions
+        })
+        const store = createStore(root)
+        await store.dispatch('incBy', { value: 2 })
+        assert(store.state.value === 3)
+      })
+
+      it('dispatch payload is passed correctly', async () => {
+        const root = new Module({
+          state: FooState,
+          mutations: FooMutations,
+          actions: TestActions
+        })
+        const store = createStore(root)
+        await store.dispatch('incByTwo')
+        assert(store.state.value === 3)
+      })
+
+      it('collects parent actions', () => {
+        class ParentActions<
+          A extends Actions<FooState, never, FooMutations>
+        > extends Actions<FooState, never, FooMutations, A> {
+          inc() {
+            this.mutations.inc()
+          }
+        }
+
+        class ChildActions extends ParentActions<ChildActions> {
+          doubleInc() {
+            this.mutations.inc()
+            this.mutations.inc()
+          }
+        }
+
+        const root = new Module({
+          state: FooState,
+          mutations: FooMutations,
+          actions: ChildActions
+        })
+
+        const store = createStore(root)
+        store.dispatch('inc')
+        assert(store.state.value === 2)
+        store.dispatch('doubleInc')
+        assert(store.state.value === 4)
+      })
     })
   })
 
