@@ -1,5 +1,5 @@
 import { Store, CommitOptions, DispatchOptions } from 'vuex'
-import { Payload } from './assets'
+import { Payload, Dispatcher, Committer } from './assets'
 import { get } from './utils'
 import { Module } from './module'
 
@@ -129,8 +129,45 @@ export function getters(store: Store<any>, namespace: string): any {
 }
 
 export class Context<Mod extends Module<any, any, any, any>> {
+  private __mutations__?: Committer<Mutations<Mod>>
+  private __actions__?: Dispatcher<Actions<Mod>>
   /** @internal */
-  constructor(private pos: ContextPosition, private store: Store<any>) {}
+  constructor(
+    private pos: ContextPosition,
+    private store: Store<any>,
+    private mutationNames: string[],
+    private actionNames: string[]
+  ) {}
+
+  get mutations(): Committer<Mutations<Mod>> {
+    if (this.__mutations__) {
+      return this.__mutations__
+    }
+    const mutations: Record<string, any> = {}
+    this.mutationNames.forEach(name => {
+      Object.defineProperty(mutations, name, {
+        value: (payload: any) =>
+          commit(this.store, this.pos.namespace, name, payload),
+        enumerable: true
+      })
+    })
+    return (this.__mutations__ = mutations as any)
+  }
+
+  get actions(): Dispatcher<Actions<Mod>> {
+    if (this.__actions__) {
+      return this.__actions__
+    }
+    const actions: Record<string, any> = {}
+    this.actionNames.forEach(name => {
+      Object.defineProperty(actions, name, {
+        value: (payload: any) =>
+          dispatch(this.store, this.pos.namespace, name, payload),
+        enumerable: true
+      })
+    })
+    return (this.__actions__ = actions as any)
+  }
 
   commit: Commit<Mutations<Mod>> = (
     type: any,
