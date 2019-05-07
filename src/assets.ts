@@ -97,16 +97,34 @@ export class Actions<
   }
 }
 
+export type CommitterMethod<Method> = Payload<Method> extends never
+  ? never
+  : Method extends (...args: infer Args) => infer R
+  ? R extends void // use Method itself as possible to make "Go to definition" work
+    ? Method
+    : (...args: Args) => void
+  : never
+
 export type Committer<M extends Mutations<any>> = {
-  [K in Exclude<keyof M, keyof Mutations>]: M[K] extends Function
-    ? (payload: Payload<M[K]>) => void
-    : never
+  [K in keyof M]: CommitterMethod<M[K]>
 }
 
+export type DispatcherMethod<Method> = Payload<Method> extends never
+  ? never
+  : Method extends (...args: infer Args) => infer R
+  ? R extends (void | Promise<any>) // use Method itself as possible to make "Go to definition" work
+    ? Method
+    : (...args: Args) => Promise<R>
+  : never
+
+/* NOTE:
+ *  For now, `DispatcherMethod<(payload: P) => void>` is equivalent to `(payload: P) => void`.
+ *  To be exact, `DispatcherMethod<(payload: P) => void>` should be `(payload: P) => Promise<void>`.
+ *  But in this case, "Go to definition" availability may be important than exact type.
+ */
+
 export type Dispatcher<A extends {}> = {
-  [K in Exclude<keyof A, keyof Actions>]: A[K] extends Function
-    ? (payload: Payload<A[K]>) => Promise<any>
-    : never
+  [K in keyof A]: DispatcherMethod<A[K]>
 }
 
 // Type aliases for internal use

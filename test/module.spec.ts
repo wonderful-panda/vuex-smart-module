@@ -32,6 +32,9 @@ describe('Module', () => {
     inc() {
       this.state.value++
     }
+    incBy(payload: { value: number }) {
+      this.state.value += payload.value
+    }
   }
 
   class FooActions extends Actions<
@@ -48,10 +51,10 @@ describe('Module', () => {
         }, 0)
       })
     }
-    incByCommitter() {
+    incBy(payload: { value: number }) {
       return new Promise(resolve => {
         setTimeout(() => {
-          this.committer.inc(undefined)
+          this.committer.incBy(payload)
           resolve()
         }, 0)
       })
@@ -351,28 +354,6 @@ describe('Module', () => {
       assert(store.state.value === 2)
     })
 
-    it('has committer reference', async () => {
-      class TestActions extends Actions<
-        FooState,
-        FooGetters,
-        FooMutations,
-        TestActions
-      > {
-        inc(): void {
-          this.committer.inc(undefined)
-        }
-      }
-      const root = new Module({
-        state: FooState,
-        mutations: FooMutations,
-        actions: TestActions
-      })
-
-      const store = createStore(root)
-      await store.dispatch('inc')
-      assert(store.state.value === 2)
-    })
-
     it('has dispatch reference', done => {
       class TestActions extends Actions<{}, Getters, Mutations, TestActions> {
         one(): void {
@@ -446,37 +427,68 @@ describe('Module', () => {
         inc(): Promise<void> {
           return new Promise(resolve => {
             setTimeout(() => {
-              this.committer.inc(undefined)
+              this.committer.inc()
+              resolve()
+            }, 0)
+          })
+        }
+        incBy(payload: { value: number }): Promise<void> {
+          return new Promise(resolve => {
+            setTimeout(() => {
+              this.committer.incBy(payload)
               resolve()
             }, 0)
           })
         }
         one(): Promise<void> {
-          return this.dispatcher.inc(undefined)
+          return this.dispatcher.inc()
+        }
+        incByTwo(): Promise<void> {
+          return this.dispatcher.incBy({ value: 2 })
         }
       }
-      it('has committer reference', () => {
+      it('has committer reference', async () => {
         const root = new Module({
           state: FooState,
           mutations: FooMutations,
           actions: TestActions
         })
         const store = createStore(root)
-        store.dispatch('inc').then(() => {
-          assert(store.state.value === 2)
-        })
+        await store.dispatch('inc')
+        assert(store.state.value === 2)
       })
 
-      it('has dispatcher reference', () => {
+      it('has dispatcher reference', async () => {
         const root = new Module({
           state: FooState,
           mutations: FooMutations,
           actions: TestActions
         })
         const store = createStore(root)
-        store.dispatch('one').then(() => {
-          assert(store.state.value === 2)
+        await store.dispatch('one')
+        assert(store.state.value === 2)
+      })
+
+      it('mutation payload is passed correctly', async () => {
+        const root = new Module({
+          state: FooState,
+          mutations: FooMutations,
+          actions: TestActions
         })
+        const store = createStore(root)
+        await store.dispatch('incBy', { value: 2 })
+        assert(store.state.value === 3)
+      })
+
+      it('dispatch payload is passed correctly', async () => {
+        const root = new Module({
+          state: FooState,
+          mutations: FooMutations,
+          actions: TestActions
+        })
+        const store = createStore(root)
+        await store.dispatch('incByTwo')
+        assert(store.state.value === 3)
       })
 
       it('collects parent actions', () => {
@@ -484,14 +496,14 @@ describe('Module', () => {
           A extends Actions<FooState, never, FooMutations>
         > extends Actions<FooState, never, FooMutations, A> {
           inc() {
-            this.committer.inc(undefined)
+            this.committer.inc()
           }
         }
 
         class ChildActions extends ParentActions<ChildActions> {
           doubleInc() {
-            this.committer.inc(undefined)
-            this.committer.inc(undefined)
+            this.committer.inc()
+            this.committer.inc()
           }
         }
 
@@ -610,6 +622,57 @@ describe('Module', () => {
 
       store.dispatch('test/incByTwo')
       assert(store.state.foo.value === 3)
+    })
+
+    describe('committer and dispatcher', () => {
+      it("can be used in other module's action", async () => {
+        const foo = new Module({
+          state: FooState,
+          getters: FooGetters,
+          mutations: FooMutations,
+          actions: FooActions
+        })
+
+        class TestActions extends Actions {
+          foo!: Context<typeof foo>
+
+          $init(store: Vuex.Store<any>): void {
+            this.foo = foo.context(store)
+          }
+
+          incViaCommitter(): void {
+            this.foo.committer.inc()
+          }
+
+          incViaDispatcher() {
+            return this.foo.dispatcher.inc()
+          }
+
+          incByTwoViaDispatcher() {
+            return this.foo.dispatcher.incBy({ value: 2 })
+          }
+        }
+
+        const test = new Module({
+          actions: TestActions
+        })
+
+        const root = new Module({
+          modules: {
+            test,
+            foo
+          }
+        })
+
+        const store = createStore(root)
+
+        store.dispatch('test/incViaCommitter')
+        assert(store.state.foo.value === 2)
+        await store.dispatch('test/incViaDispatcher')
+        assert(store.state.foo.value === 3)
+        await store.dispatch('test/incByTwoViaDispatcher')
+        assert(store.state.foo.value === 5)
+      })
     })
   })
 
