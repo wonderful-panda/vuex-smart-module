@@ -470,44 +470,44 @@ describe('Module', () => {
 
       assert(store.getters['test/triple'] === 3)
     })
-  })
 
-  it("can be used in other module's action", () => {
-    const foo = new Module({
-      state: FooState,
-      getters: FooGetters,
-      mutations: FooMutations,
-      actions: FooActions
-    })
+    it("can be used in other module's action", () => {
+      const foo = new Module({
+        state: FooState,
+        getters: FooGetters,
+        mutations: FooMutations,
+        actions: FooActions
+      })
 
-    class TestActions extends Actions {
-      foo!: Context<typeof foo>
+      class TestActions extends Actions {
+        foo!: Context<typeof foo>
 
-      $init(store: Vuex.Store<any>): void {
-        this.foo = foo.context(store)
+        $init(store: Vuex.Store<any>): void {
+          this.foo = foo.context(store)
+        }
+
+        incByTwo(): void {
+          this.foo.commit('inc', undefined)
+          this.foo.commit('inc', undefined)
+        }
       }
 
-      incByTwo(): void {
-        this.foo.commit('inc', undefined)
-        this.foo.commit('inc', undefined)
-      }
-    }
+      const test = new Module({
+        actions: TestActions
+      })
 
-    const test = new Module({
-      actions: TestActions
+      const root = new Module({
+        modules: {
+          test,
+          foo
+        }
+      })
+
+      const store = createStore(root)
+
+      store.dispatch('test/incByTwo')
+      assert(store.state.foo.value === 3)
     })
-
-    const root = new Module({
-      modules: {
-        test,
-        foo
-      }
-    })
-
-    const store = createStore(root)
-
-    store.dispatch('test/incByTwo')
-    assert(store.state.foo.value === 3)
   })
 
   describe('component mappers', () => {
