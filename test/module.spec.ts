@@ -48,6 +48,14 @@ describe('Module', () => {
         }, 0)
       })
     }
+    incByCommitter() {
+      return new Promise(resolve => {
+        setTimeout(() => {
+          this.committer.inc(undefined)
+          resolve()
+        }, 0)
+      })
+    }
   }
 
   describe('generate', () => {
@@ -343,6 +351,28 @@ describe('Module', () => {
       assert(store.state.value === 2)
     })
 
+    it('has committer reference', async () => {
+      class TestActions extends Actions<
+        FooState,
+        FooGetters,
+        FooMutations,
+        TestActions
+      > {
+        inc(): void {
+          this.committer.inc(undefined)
+        }
+      }
+      const root = new Module({
+        state: FooState,
+        mutations: FooMutations,
+        actions: TestActions
+      })
+
+      const store = createStore(root)
+      await store.dispatch('inc')
+      assert(store.state.value === 2)
+    })
+
     it('has dispatch reference', done => {
       class TestActions extends Actions<{}, Getters, Mutations, TestActions> {
         one(): void {
@@ -404,6 +434,79 @@ describe('Module', () => {
       assert(store.state.value === 2)
       store.dispatch('doubleInc')
       assert(store.state.value === 4)
+    })
+
+    describe('committer and dispatcher', () => {
+      class TestActions extends Actions<
+        FooState,
+        FooGetters,
+        FooMutations,
+        TestActions
+      > {
+        inc(): Promise<void> {
+          return new Promise(resolve => {
+            setTimeout(() => {
+              this.committer.inc(undefined)
+              resolve()
+            }, 0)
+          })
+        }
+        one(): Promise<void> {
+          return this.dispatcher.inc(undefined)
+        }
+      }
+      it('has committer reference', () => {
+        const root = new Module({
+          state: FooState,
+          mutations: FooMutations,
+          actions: TestActions
+        })
+        const store = createStore(root)
+        store.dispatch('inc').then(() => {
+          assert(store.state.value === 2)
+        })
+      })
+
+      it('has dispatcher reference', () => {
+        const root = new Module({
+          state: FooState,
+          mutations: FooMutations,
+          actions: TestActions
+        })
+        const store = createStore(root)
+        store.dispatch('one').then(() => {
+          assert(store.state.value === 2)
+        })
+      })
+
+      it('collects parent actions', () => {
+        class ParentActions<
+          A extends Actions<FooState, never, FooMutations>
+        > extends Actions<FooState, never, FooMutations, A> {
+          inc() {
+            this.committer.inc(undefined)
+          }
+        }
+
+        class ChildActions extends ParentActions<ChildActions> {
+          doubleInc() {
+            this.committer.inc(undefined)
+            this.committer.inc(undefined)
+          }
+        }
+
+        const root = new Module({
+          state: FooState,
+          mutations: FooMutations,
+          actions: ChildActions
+        })
+
+        const store = createStore(root)
+        store.dispatch('inc')
+        assert(store.state.value === 2)
+        store.dispatch('doubleInc')
+        assert(store.state.value === 4)
+      })
     })
   })
 

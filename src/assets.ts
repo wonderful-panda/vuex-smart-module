@@ -87,6 +87,26 @@ export class Actions<
   protected get dispatch(): Dispatch<A> {
     return this.__ctx__.dispatch
   }
+
+  protected get dispatcher(): Dispatcher<A> {
+    return this.__ctx__.dispatcher
+  }
+
+  protected get committer(): Committer<M> {
+    return this.__ctx__.committer
+  }
+}
+
+export type Committer<M extends Mutations<any>> = {
+  [K in Exclude<keyof M, keyof Mutations>]: M[K] extends Function
+    ? (payload: Payload<M[K]>) => void
+    : never
+}
+
+export type Dispatcher<A extends {}> = {
+  [K in Exclude<keyof A, keyof Actions>]: A[K] extends Function
+    ? (payload: Payload<A[K]>) => Promise<any>
+    : never
 }
 
 // Type aliases for internal use

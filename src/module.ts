@@ -57,6 +57,24 @@ export class Module<
   /* @internal */
   namespace: string | undefined
 
+  private get actionNames(): string[] {
+    const { actions } = this.options
+    if (actions) {
+      return gatherHandlerNames(actions.prototype, BaseActions)
+    } else {
+      return []
+    }
+  }
+
+  private get mutationNames(): string[] {
+    const { mutations } = this.options
+    if (mutations) {
+      return gatherHandlerNames(mutations.prototype, BaseMutations)
+    } else {
+      return []
+    }
+  }
+
   private mapper: ComponentMapper = new ComponentMapper(
     createLazyContextPosition(this)
   )
@@ -72,7 +90,12 @@ export class Module<
   }
 
   context(store: Store<any>): Context<this> {
-    return new Context(createLazyContextPosition(this), store)
+    return new Context(
+      createLazyContextPosition(this),
+      store,
+      this.mutationNames,
+      this.actionNames
+    )
   }
 
   mapState<K extends keyof S>(map: K[]): { [Key in K]: () => S[Key] }
@@ -173,7 +196,6 @@ export class Module<
     const gettersInstance = getters && initGetters(getters, this)
     const mutationsInstance = mutations && initMutations(mutations, this)
     const actionsInstance = actions && initActions(actions, this)
-
     return {
       options: {
         namespaced: namespaced === undefined ? true : namespaced,
@@ -334,4 +356,15 @@ function traverseDescriptors(
   })
 
   traverseDescriptors(Object.getPrototypeOf(proto), Base, fn, exclude)
+}
+
+function gatherHandlerNames(proto: Object, Base: Function): string[] {
+  const ret: string[] = []
+  traverseDescriptors(proto, Base, (desc, name) => {
+    if (typeof desc.value !== 'function') {
+      return
+    }
+    ret.push(name)
+  })
+  return ret
 }
